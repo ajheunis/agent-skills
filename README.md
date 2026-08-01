@@ -6,7 +6,7 @@ Attie's agent-skills.
 
 | Skill | Description |
 | --- | --- |
-| [`attieflow`](skills/attieflow/skill.md) | GitHub-issue-driven coding workflow: issue → linked branch → push → PR → user-gated squash merge → local prune. |
+| [`attieflow`](skills/attieflow/SKILL.md) | GitHub-issue-driven coding workflow: issue → linked branch → push → PR → user-gated squash merge → local prune. |
 
 ## Installing
 
