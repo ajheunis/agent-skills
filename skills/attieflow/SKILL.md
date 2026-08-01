@@ -53,7 +53,7 @@ Both flags are required. `--squash` is the chosen merge strategy; `--delete-bran
 ```bash
 git checkout main
 git fetch --prune
-git branch -vv | awk '/: gone]/ {print $1}' | xargs -r git branch -D
+git branch -vv | awk '!/^\*/ && /\[[^]]*: gone\]/ {print $1}' | xargs -r git branch -D
 git pull --ff-only origin main
 git status && git log -1 --oneline
 ```
@@ -62,8 +62,11 @@ Two things worth knowing:
 
 - `-D` (not `-d`) is correct. After a squash merge the local branch tip isn't an ancestor of `main` (the squashed commit is a different SHA), so `-d` refuses.
 - The `[gone]` filter only catches branches whose remote counterpart was deleted. `main`, live-upstream branches, and local-only never-pushed branches are all left alone.
+- Both guards in that `awk` are load-bearing, because `-D` force-deletes regardless of merge state:
+  - `!/^\*/` skips the current branch, whose line starts with `* ` — without it `$1` is the marker, not a branch name.
+  - `\[[^]]*: gone\]` anchors the match inside the upstream brackets. A bare `/: gone]/` also matches the *commit subject*, so a branch with an intact upstream and a message like `fix: gone] handling` gets listed and deleted.
 
-Show the `[gone]` list first if there's any doubt: `git branch -vv | awk '/: gone]/ {print $1}'`.
+Show the `[gone]` list first if there's any doubt: `git branch -vv | awk '!/^\*/ && /\[[^]]*: gone\]/ {print $1}'`.
 
 ## Edge cases
 
