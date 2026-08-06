@@ -53,20 +53,28 @@ Both flags are required. `--squash` is the chosen merge strategy; `--delete-bran
 ```bash
 git checkout main
 git fetch --prune
-git branch -vv | awk '!/^\*/ && /\[[^]]*: gone\]/ {print $1}' | xargs -r git branch -D
+git for-each-ref --format='%(if)%(HEAD)%(then)%(else)%(refname:short) %(upstream:track)%(end)' refs/heads/ \
+  | grep '\[gone\]$' \
+  | cut -d' ' -f1 \
+  | xargs -r git branch -D
 git pull --ff-only origin main
 git status && git log -1 --oneline
 ```
 
-Two things worth knowing:
+Use exactly that pruning command. Do not "simplify" it to `git branch -vv | awk ...` — the reasons are structural, not stylistic, and `-D` force-deletes regardless of merge state:
 
 - `-D` (not `-d`) is correct. After a squash merge the local branch tip isn't an ancestor of `main` (the squashed commit is a different SHA), so `-d` refuses.
-- The `[gone]` filter only catches branches whose remote counterpart was deleted. `main`, live-upstream branches, and local-only never-pushed branches are all left alone.
-- Both guards in that `awk` are load-bearing, because `-D` force-deletes regardless of merge state:
-  - `!/^\*/` skips the current branch, whose line starts with `* ` — without it `$1` is the marker, not a branch name.
-  - `\[[^]]*: gone\]` anchors the match inside the upstream brackets. A bare `/: gone]/` also matches the *commit subject*, so a branch with an intact upstream and a message like `fix: gone] handling` gets listed and deleted.
+- `for-each-ref` never prints the commit subject, so a subject containing `gone]` cannot be matched. `git branch -vv` does print it, which is why a `branch -vv` filter has to escape its way around subjects like `fix: gone] handling` — that branch has an intact upstream, and a naive filter force-deletes it.
+- `%(if)%(HEAD)%(then)%(else)...%(end)` emits nothing at all for the current branch, so `-D` can never target `HEAD`. That is a structural guard, not a regex one. (`%(HEAD)` expands to a single space for non-current branches, so a naive `'%(HEAD) %(refname:short) ...'` format gives two leading spaces and `cut -d' ' -f2` lands on an empty field — hence the `%(if)` form.)
+- `%(upstream:track)` prints `[gone]` only when the remote counterpart was deleted. `main`, live-upstream branches, and local-only never-pushed branches all fall through untouched.
+- No positional argument (`$N`, for any digit N) appears anywhere in the pipeline. That is deliberate — see "Never" below.
 
-Show the `[gone]` list first if there's any doubt: `git branch -vv | awk '!/^\*/ && /\[[^]]*: gone\]/ {print $1}'`.
+Show the `[gone]` list first if there's any doubt — same command, minus the `xargs`:
+
+```bash
+git for-each-ref --format='%(if)%(HEAD)%(then)%(else)%(refname:short) %(upstream:track)%(end)' refs/heads/ \
+  | grep '\[gone\]$' | cut -d' ' -f1
+```
 
 ## Edge cases
 
@@ -78,3 +86,5 @@ Show the `[gone]` list first if there's any doubt: `git branch -vv | awk '!/^\*/
 ## Never
 
 Auto-merge. Touch `main` with anything other than `--ff-only`. Delete branches with a live upstream.
+
+Never write a bare positional argument — a dollar sign followed by a digit — into a shell or `awk` snippet in this file, and never into prose either. When `/attieflow` is invoked with arguments, each such token in the skill body is replaced by the corresponding whitespace-separated token of those arguments *before the body reaches the agent*. An `awk` field reference like `{print <dollar>1}` therefore arrives as `{print the}` — an uninitialised `awk` variable that prints a blank line, after which `xargs -r` declines to run and the cleanup silently no-ops while reporting success. That is why this file contains no such token anywhere, including in this paragraph. If a field reference is ever unavoidable, pass it through a named `awk -v` variable, or restructure to a `git for-each-ref --format` string, which needs none.
