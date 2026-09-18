@@ -7,13 +7,24 @@ description: Attie's preferred GitHub-issue-driven coding workflow. Use whenever
 
 Every change traces from issue → linked branch → squash-merged commit on `main`. Five phases; figure out which one Attie is entering at and pick up there.
 
+## Optional database branching
+
+If the repository has `.attieflow/database.json`, read [database branching](references/database-branching.md) before starting work or switching branches. It opts the repository into Neon or Databricks Lakebase Autoscaling database branches. Missing configuration keeps the Git-only workflow unchanged; invalid or unsupported configuration must be reported, not silently ignored. Never infer database settings from production connection strings.
+
+Repeatable skill commands (agent instructions, not shell executables):
+
+- `attieflow db issue <issue-number>`: select the database for the current issue-linked Git branch; create it from the configured development base only on first use.
+- `attieflow db development`: return Git to its default branch and select the shared development database.
+
+On these commands, run the database procedure directly; do not create another issue, ship work, or merge a PR. A normal issue start runs the issue selector after Phase 1. Every return to the default Git branch through this skill, including Phase 5, runs the development selector. Plain Git commands outside this skill do not trigger database switching.
+
 ## Preconditions
 
 Confirm `gh auth status` works and `git remote -v` points at GitHub. Resolve the default branch with `gh repo view --json defaultBranchRef -q .defaultBranchRef.name` and use that name wherever this skill says `main`. If `gh` is missing or unauthenticated, stop — `gh issue develop` is the linkage and plain `git checkout -b` is not a substitute.
 
 ## Phase 1 — Issue → linked branch
 
-Require a clean tree (`git status --porcelain`); if it isn't, ask Attie what to do. Refresh with `git pull --ff-only origin main` — fail loudly on divergence rather than silently merging.
+Require a clean tree (`git status --porcelain`); if it isn't, ask Attie what to do. For an opted-in repository, validate the database configuration and stop the local application before Git changes. Keep it stopped until the issue database selection and pool verification succeed. Refresh with `git pull --ff-only origin main` — fail loudly on divergence rather than silently merging.
 
 Ask for the issue number. If there isn't one, help draft a short title and body and run `gh issue create`. Then:
 
@@ -23,9 +34,13 @@ gh issue develop <issue-number> --checkout
 
 This is the load-bearing command. It registers the branch as a development branch on the issue, which is what surfaces the link under "Development" on the issue page on GitHub.com. Plain `git checkout -b` will not do that. Confirm with `git branch --show-current` and hand off.
 
+For an opted-in repository, select and verify the issue database before handing off for work. If selection fails, report the current Git branch and that the database was not switched; do not start application work against the previous database.
+
 ## Phase 2 — Work
 
 Attie's coding phase. Help with implementation if asked, but do not push the workflow forward until he says he's ready to ship.
+
+Git merges do not merge database schemas or data. Keep schema migrations in version control and use the repository's separately reviewed promotion process for shared development and production. Selecting a database never runs migrations or promotes data automatically.
 
 ## Phase 3 — Push and PR
 
@@ -60,6 +75,8 @@ git for-each-ref --format='%(if)%(HEAD)%(then)%(else)%(refname:short) %(upstream
 git pull --ff-only origin main
 git status && git log -1 --oneline
 ```
+
+For an opted-in repository, stop the local application before this cleanup sequence, then select the shared development database and reload the application after Git returns to the default branch. Git branch deletion does not authorize database branch deletion or reset; retain issue databases unless Attie explicitly authorizes those operations.
 
 Use exactly that pruning command. Do not "simplify" it to `git branch -vv | awk ...` — the reasons are structural, not stylistic, and `-D` force-deletes regardless of merge state:
 
